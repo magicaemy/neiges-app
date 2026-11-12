@@ -35,7 +35,7 @@ input[type=text],input[type=time]{font:inherit;color:var(--ink);background:var(-
 input[type=text]{flex:1 1 140px}
 button.pri{font:inherit;background:var(--acc);color:var(--acc-ink);border:0;border-radius:10px;padding:9px 14px;cursor:pointer;font-weight:600}
 button.sec{font:inherit;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px 12px;cursor:pointer;font-size:14px}
-button.media-icon{font:inherit;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px 11px;cursor:pointer;font-size:18px;line-height:1;display:inline-flex;align-items:center;justify-content:center}
+button.icon-only{font:inherit;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:10px;padding:8px 12px;cursor:pointer;font-size:18px;line-height:1.2}
 button.icon-btn{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:5px 9px;cursor:pointer;font-size:14px}
 button.del-sm{background:none;border:0;color:var(--danger);cursor:pointer;font-size:16px;padding:4px 8px;font-weight:700}
 label.u{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--mute)}
@@ -108,10 +108,8 @@ label.u{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--mute)
     <div class="add" id="addFormContainer">
       <div class="row">
         <input type="text" id="title" placeholder="Nuovo task (es. Cambia lampadina)…" maxlength="140">
-        <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
-        <input type="file" id="galleryInput" accept="image/*" style="display:none">
-        <button type="button" class="media-icon" id="cameraBtn" aria-label="Scatta foto">📷</button>
-        <button type="button" class="media-icon" id="galleryBtn" aria-label="Scegli dalla galleria">🖼️</button>
+        <input type="file" id="photoInput" accept="image/*" style="display:none">
+        <button type="button" class="icon-only" id="photoBtn" title="Allega o scatta foto" aria-label="Allega o scatta foto">📷</button>
       </div>
       <div id="photoPreviewArea" style="display:none">
         <div class="photo-preview-wrap">
@@ -246,7 +244,7 @@ function toast(msg) {
   setTimeout(() => d.remove(), 4500);
 }
 
-// --- COMPRESSIONE FOTO (FOTOCAMERA O GALLERIA) ---
+// --- COMPRESSIONE FOTO (LIBRERIA O FOTOCAMERA) ---
 function compressImage(file, maxDim = 800, quality = 0.72) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -273,33 +271,22 @@ function compressImage(file, maxDim = 800, quality = 0.72) {
   });
 }
 
-async function handleSelectedFile(file, btnEl, defaultIcon) {
+$("photoBtn").onclick = () => $("photoInput").click();
+
+$("photoInput").onchange = async (e) => {
+  const file = e.target.files?.[0];
   if (!file) return;
   try {
-    btnEl.textContent = "⏳";
+    $("photoBtn").textContent = "⏳";
     pendingPhotoDataUrl = await compressImage(file);
     $("photoPreviewImg").src = pendingPhotoDataUrl;
     $("photoPreviewArea").style.display = "block";
   } catch (err) {
     alert("Impossibile caricare la foto selezionata.");
   } finally {
-    btnEl.textContent = defaultIcon;
+    $("photoBtn").textContent = "📷";
+    $("photoInput").value = "";
   }
-}
-
-$("cameraBtn").onclick = () => $("cameraInput").click();
-$("galleryBtn").onclick = () => $("galleryInput").click();
-
-$("cameraInput").onchange = async (e) => {
-  const file = e.target.files?.[0];
-  await handleSelectedFile(file, $("cameraBtn"), "📷");
-  $("cameraInput").value = "";
-};
-
-$("galleryInput").onchange = async (e) => {
-  const file = e.target.files?.[0];
-  await handleSelectedFile(file, $("galleryBtn"), "🖼️");
-  $("galleryInput").value = "";
 };
 
 $("removePhotoBtn").onclick = () => {
