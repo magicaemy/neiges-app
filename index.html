@@ -50,10 +50,17 @@ label.u{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--mute)
 .x{background:none;border:0;color:var(--mute);cursor:pointer;font-size:18px;padding:0 4px}
 .empty{text-align:center;color:var(--mute);padding:24px 0}
 .toast{position:fixed;left:12px;right:12px;top:calc(12px + env(safe-area-inset-top,0px));max-width:420px;margin:0 auto;background:var(--ink);color:var(--bg);padding:12px 14px;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.25);z-index:40}
-.modal{position:fixed;inset:0;background:rgba(0,0,0,.5);display:flex;align-items:center;justify-content:center;padding:16px;z-index:30}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,.65);display:flex;align-items:center;justify-content:center;padding:16px;z-index:30}
 .box{background:var(--card);border-radius:16px;padding:18px;width:100%;max-width:460px;max-height:85vh;overflow-y:auto}
 .box h2{margin:0 0 6px;font-size:18px}.box p{margin:0 0 12px;color:var(--mute);font-size:14px}
 .opt{display:flex;align-items:center;gap:10px;padding:6px 0}.opt input{width:18px;height:18px}
+
+/* Foto allegate */
+.photo-preview-wrap{position:relative;display:inline-block;margin-top:4px}
+.photo-preview-wrap img{max-height:110px;border-radius:10px;border:1px solid var(--line);display:block}
+.photo-remove{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:var(--danger);color:#fff;border:0;font-size:13px;font-weight:700;cursor:pointer;line-height:1}
+.task-img{margin-top:8px;max-width:100%;max-height:180px;border-radius:10px;border:1px solid var(--line);cursor:pointer;display:block;object-fit:cover}
+.lightbox-img{max-width:100%;max-height:75vh;border-radius:12px;display:block;margin:0 auto}
 
 /* Turni styles */
 .week-bar{display:flex;align-items:center;justify-content:space-between;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin-bottom:12px;font-weight:600}
@@ -99,7 +106,15 @@ label.u{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--mute)
     <div class="tabs" id="tabs"></div>
     <div class="add" id="addFormContainer">
       <div class="row">
-        <input type="text" id="title" placeholder="Nuovo task…" maxlength="140">
+        <input type="text" id="title" placeholder="Nuovo task (es. Cambia lampadina)…" maxlength="140">
+        <input type="file" id="photoInput" accept="image/*" style="display:none">
+        <button type="button" class="sec" id="photoBtn">📷 Foto</button>
+      </div>
+      <div id="photoPreviewArea" style="display:none">
+        <div class="photo-preview-wrap">
+          <img id="photoPreviewImg" src="" alt="Anteprima">
+          <button type="button" class="photo-remove" id="removePhotoBtn">×</button>
+        </div>
       </div>
       <div class="row" style="justify-content:space-between">
         <label class="u"><input type="checkbox" id="urgent"> Urgente</label>
@@ -187,13 +202,14 @@ const firebaseConfig = {
   appId: "1:315683814261:web:b52934b3c3a22e46f4713c"
 };
 const VAPID_KEY = "BFvia4Nz5hHpoABwFI3U8KbXvMdvXuDUR2CNav7suYQStqhzLTMnFfxaeCitqIxa6Gxv4H37nMM45-N67R2p2TU";
-const ADMIN_PIN = "1805";
+const ADMIN_PIN = "1508";
 
 const LISTS = ["Reception","Pulizie","Manutenzione","Colazione","Pranzo","Cena","Generale"];
 const LS = "neiges.profile";
 let profile = null, db = null, messaging = null, uid = null;
 let tasks = [], filter = "👤", first = true, unread = {};
 let activeMainTab = "todo";
+let pendingPhotoDataUrl = "";
 
 let isAdmin = false;
 let isAdminOpen = false;
@@ -227,6 +243,68 @@ function toast(msg) {
   setTimeout(() => d.remove(), 4500);
 }
 
+// --- COMPRESSIONE FOTO (LIBRERIA O FOTOCAMERA) ---
+function compressImage(file, maxDim = 800, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.width, h = img.height;
+        if (w > maxDim || h > maxDim) {
+          if (w > h) { h = Math.round(h * maxDim / w); w = maxDim; }
+          else { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+$("photoBtn").onclick = () => $("photoInput").click();
+
+$("photoInput").onchange = async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  try {
+    $("photoBtn").textContent = "⏳…";
+    pendingPhotoDataUrl = await compressImage(file);
+    $("photoPreviewImg").src = pendingPhotoDataUrl;
+    $("photoPreviewArea").style.display = "block";
+  } catch (err) {
+    alert("Impossibile caricare la foto selezionata.");
+  } finally {
+    $("photoBtn").textContent = "📷 Foto";
+    $("photoInput").value = "";
+  }
+};
+
+$("removePhotoBtn").onclick = () => {
+  pendingPhotoDataUrl = "";
+  $("photoPreviewImg").src = "";
+  $("photoPreviewArea").style.display = "none";
+};
+
+function openPhotoModal(src, title) {
+  $("modal").innerHTML = `<div class="modal"><div class="box">
+    <h2>📷 ${esc(title)}</h2>
+    <img class="lightbox-img" src="${src}" alt="Foto task">
+    <div class="row" style="margin-top:14px">
+      <button class="pri" id="closePhotoModal" style="flex:1">Chiudi</button>
+    </div>
+  </div></div>`;
+  $("closePhotoModal").onclick = () => { $("modal").innerHTML = ""; };
+}
+
 // --- PUSH NOTIFICATIONS ---
 async function registerPush(silent = false) {
   if (!("Notification" in window) || !("serviceWorker" in navigator) || !db || !messaging) return;
@@ -234,7 +312,7 @@ async function registerPush(silent = false) {
     const perm = await Notification.requestPermission();
     if (perm !== "granted") {
       $("pushBanner").style.display = "flex";
-      if (!silent) alert("Permesso notifiche negato. Controlla Impostazioni iPhone > Notifiche > Les Neiges D'Antan.");
+      if (!silent) alert("Permesso notifiche negato. Controlla Impostazioni > Notifiche > Les Neiges D'Antan.");
       return;
     }
 
@@ -269,10 +347,7 @@ async function registerPush(silent = false) {
     }
   } catch (e) {
     $("pushBanner").style.display = "flex";
-    if (!silent) {
-      console.error("Errore attivazione notifiche:", e);
-      alert("Errore attivazione notifiche: " + (e.message || e));
-    }
+    if (!silent) alert("Errore attivazione notifiche: " + (e.message || e));
   }
 }
 $("enablePushBtn").onclick = () => registerPush(false);
@@ -307,14 +382,11 @@ function profileModal() {
   };
 }
 
-// --- MAIN TABS SWITCH (ESCE DA ADMIN AUTOMATICAMENTE) ---
+// --- MAIN TABS SWITCH ---
 function setMainTab(tab) {
   activeMainTab = tab;
   isAdmin = false;
   isAdminOpen = false;
-  shiftFilter = "all";
-  $("filterAllShifts").classList.add("on");
-  $("filterMyShifts").classList.remove("on");
   $("navTodo").classList.toggle("on", tab === "todo");
   $("navSala").classList.toggle("on", tab === "sala");
   $("navReception").classList.toggle("on", tab === "reception");
@@ -364,14 +436,17 @@ function renderTodo() {
 
   $("tasks").innerHTML = vis.length ? vis.map(t => `<div class="task ${t.done ? "done" : ""}">
     <button class="chk" data-id="${t.id}">${t.done ? "✓" : ""}</button>
-    <div class="body"><div class="t">${esc(t.title)}</div>
-    <div class="meta">
-      ${t.urgent ? '<span class="tag u">Urgente</span>' : ""}
-      ${t.private ? '<span class="tag p">🔒 Privato</span>' : ""}
-      <span class="tag">${esc(t.list)}</span>
-      ${new Date(t.createdAt).toLocaleString("it-IT",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}
-      ${t.done && t.doneBy ? " · ✓ " + esc(t.doneBy) : ""}
-    </div></div>
+    <div class="body">
+      <div class="t">${esc(t.title)}</div>
+      ${t.photo ? `<img class="task-img" data-img-id="${t.id}" src="${t.photo}" alt="Foto allegata">` : ""}
+      <div class="meta">
+        ${t.urgent ? '<span class="tag u">Urgente</span>' : ""}
+        ${t.private ? '<span class="tag p">🔒 Privato</span>' : ""}
+        <span class="tag">${esc(t.list)}</span>
+        ${new Date(t.createdAt).toLocaleString("it-IT",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}
+        ${t.done && t.doneBy ? " · ✓ " + esc(t.doneBy) : ""}
+      </div>
+    </div>
     <button class="x" data-del="${t.id}">×</button></div>`).join("") : `<div class="empty">Nessun task qui. 🎉</div>`;
 
   $("tasks").querySelectorAll(".chk").forEach(b => b.onclick = () => {
@@ -381,24 +456,34 @@ function renderTodo() {
   $("tasks").querySelectorAll(".x").forEach(b => b.onclick = () => {
     if (confirm("Eliminare il task?")) deleteDoc(doc(db, "tasks", b.dataset.del));
   });
+  $("tasks").querySelectorAll(".task-img").forEach(img => img.onclick = () => {
+    const t = tasks.find(x => x.id === img.dataset.imgId);
+    if (t && t.photo) openPhotoModal(t.photo, t.title);
+  });
 }
 
 $("addBtn").onclick = async () => {
-  const title = $("title").value.trim();
-  if (!title || !db) return;
+  const titleText = $("title").value.trim();
+  if ((!titleText && !pendingPhotoDataUrl) || !db) return;
+  const title = titleText || "📷 Foto allegata";
   const isPersonalTab = (filter === "👤");
   const list = isPersonalTab ? "Personale" : filter;
   const urgent = $("urgent").checked;
   const isPrivate = isPersonalTab ? true : false;
+  const photo = pendingPhotoDataUrl || "";
 
   $("title").value = "";
   $("urgent").checked = false;
+  pendingPhotoDataUrl = "";
+  $("photoPreviewImg").src = "";
+  $("photoPreviewArea").style.display = "none";
 
   await addDoc(collection(db, "tasks"), {
     title,
     list,
     urgent,
     private: isPrivate,
+    photo,
     done: false,
     by: profile.name,
     byId: uid,
@@ -409,7 +494,7 @@ $("addBtn").onclick = async () => {
     fetch("/.netlify/functions/send-push", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title, list, urgent, by: profile.name, isPrivate })
+      body: JSON.stringify({ title: photo ? `📷 ${title}` : title, list, urgent, by: profile.name, isPrivate })
     }).catch(() => {});
   }
 };
@@ -457,7 +542,7 @@ $("filterMyShifts").onclick = () => {
   renderShifts();
 };
 
-// --- ADMIN TOGGLE (VISIBILE SOLO SU "TUTTI") ---
+// --- ADMIN TOGGLE ---
 $("adminToggleBtn").onclick = () => {
   if (shiftFilter !== "all") return;
   if (isAdmin) {
@@ -485,7 +570,7 @@ $("adminHeaderClick").onclick = () => {
 
 // --- ADMIN: STAFF CRUD ---
 $("addStaffBtn").onclick = async () => {
-  if (!isAdmin || shiftFilter !== "all" || !db) return;
+  if (!isAdmin || !db) return;
   const dept = getCurrentDept();
   const name = $("newStaffName").value.trim();
   if (!name) return;
@@ -495,7 +580,7 @@ $("addStaffBtn").onclick = async () => {
 
 // --- ADMIN: SLOTS CRUD ---
 $("addSlotBtn").onclick = async () => {
-  if (!isAdmin || shiftFilter !== "all" || !db) return;
+  if (!isAdmin || !db) return;
   const dept = getCurrentDept();
   const code = $("newSlotCode").value.trim().toUpperCase();
   const start1 = $("newSlotStart1").value;
@@ -635,22 +720,23 @@ function renderShifts() {
   const sortedSlots = [...dept.slots].sort((a, b) => a.code.localeCompare(b.code));
   const sortedStaff = [...dept.staff].sort((a, b) => a.name.localeCompare(b.name));
 
-  const isAllTab = (shiftFilter === "all");
-  if (!isAllTab) {
+  if (shiftFilter !== "all") {
     isAdmin = false;
     isAdminOpen = false;
   }
+
+  const canShowAdmin = (shiftFilter === "all");
+  $("adminToggleBtn").style.display = canShowAdmin ? "inline-block" : "none";
 
   const arrow = isAdminOpen ? "▲" : "▼";
   $("adminDeptTitle").textContent = `🔓 Gestione Turni ${dept.label} ${arrow}`;
   $("staffSectionLabel").textContent = `1. Lista Persone (${dept.label})`;
 
-  $("adminToggleBtn").style.display = isAllTab ? "inline-block" : "none";
+  $("adminPanel").style.display = (canShowAdmin && isAdmin) ? "block" : "none";
+  $("adminBody").style.display = (canShowAdmin && isAdmin && isAdminOpen) ? "block" : "none";
   $("adminToggleBtn").textContent = isAdmin ? "🔓 Admin" : "🔒 Admin";
-  $("adminPanel").style.display = (isAllTab && isAdmin) ? "block" : "none";
-  $("adminBody").style.display = (isAllTab && isAdmin && isAdminOpen) ? "block" : "none";
 
-  if (isAllTab && isAdmin) {
+  if (canShowAdmin && isAdmin) {
     $("adminStaffList").innerHTML = sortedStaff.length
       ? sortedStaff.map(st => `<div class="list-item">
           <span>${esc(st.name)}</span>
@@ -724,9 +810,9 @@ function renderShifts() {
     entries.sort((a, b) => a[0].localeCompare(b[0]));
 
     return `<div class="day-card">
-      <div class="day-head ${isAllTab && isAdmin ? "clickable" : ""}" data-day-iso="${d.iso}">
+      <div class="day-head ${(canShowAdmin && isAdmin) ? "clickable" : ""}" data-day-iso="${d.iso}">
         <span>${esc(d.label)}</span>
-        ${isAllTab && isAdmin ? `<span style="font-size:12px;font-weight:600">+ Assegna turni</span>` : ""}
+        ${(canShowAdmin && isAdmin) ? `<span style="font-size:12px;font-weight:600">+ Assegna turni</span>` : ""}
       </div>
       ${entries.length === 0
         ? `<div style="font-size:13px;color:var(--mute)">${shiftFilter === "mine" ? "Riposo / Nessun turno" : "Nessun turno assegnato"}</div>`
@@ -748,7 +834,7 @@ function renderShifts() {
     </div>`;
   }).join("");
 
-  if (isAllTab && isAdmin) {
+  if (canShowAdmin && isAdmin) {
     $("weekDaysContainer").querySelectorAll(".day-head.clickable").forEach(el => {
       el.onclick = () => {
         const dayObj = days.find(x => x.iso === el.dataset.dayIso);
