@@ -108,8 +108,10 @@ label.u{display:flex;align-items:center;gap:6px;font-size:14px;color:var(--mute)
     <div class="add" id="addFormContainer">
       <div class="row">
         <input type="text" id="title" placeholder="Nuovo task (es. Cambia lampadina)…" maxlength="140">
-        <input type="file" id="photoInput" accept="image/*" style="display:none">
-        <button type="button" class="icon-only" id="photoBtn" title="Allega o scatta foto" aria-label="Allega o scatta foto">📷</button>
+        <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display:none">
+        <input type="file" id="libraryInput" accept="image/*" style="display:none">
+        <button type="button" class="icon-only" id="cameraBtn" title="Scatta foto" aria-label="Scatta foto">📷</button>
+        <button type="button" class="icon-only" id="libraryBtn" title="Scegli dalla libreria" aria-label="Scegli dalla libreria">🖼️</button>
       </div>
       <div id="photoPreviewArea" style="display:none">
         <div class="photo-preview-wrap">
@@ -244,7 +246,7 @@ function toast(msg) {
   setTimeout(() => d.remove(), 4500);
 }
 
-// --- COMPRESSIONE FOTO (LIBRERIA O FOTOCAMERA) ---
+// --- COMPRESSIONE FOTO ---
 function compressImage(file, maxDim = 800, quality = 0.72) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -271,23 +273,27 @@ function compressImage(file, maxDim = 800, quality = 0.72) {
   });
 }
 
-$("photoBtn").onclick = () => $("photoInput").click();
-
-$("photoInput").onchange = async (e) => {
-  const file = e.target.files?.[0];
+async function handleSelectedPhoto(inputEl, btnEl, originalText) {
+  const file = inputEl.files?.[0];
   if (!file) return;
   try {
-    $("photoBtn").textContent = "⏳";
+    btnEl.textContent = "⏳";
     pendingPhotoDataUrl = await compressImage(file);
     $("photoPreviewImg").src = pendingPhotoDataUrl;
     $("photoPreviewArea").style.display = "block";
   } catch (err) {
     alert("Impossibile caricare la foto selezionata.");
   } finally {
-    $("photoBtn").textContent = "📷";
-    $("photoInput").value = "";
+    btnEl.textContent = originalText;
+    inputEl.value = "";
   }
-};
+}
+
+$("cameraBtn").onclick = () => $("cameraInput").click();
+$("libraryBtn").onclick = () => $("libraryInput").click();
+
+$("cameraInput").onchange = () => handleSelectedPhoto($("cameraInput"), $("cameraBtn"), "📷");
+$("libraryInput").onchange = () => handleSelectedPhoto($("libraryInput"), $("libraryBtn"), "🖼️");
 
 $("removePhotoBtn").onclick = () => {
   pendingPhotoDataUrl = "";
